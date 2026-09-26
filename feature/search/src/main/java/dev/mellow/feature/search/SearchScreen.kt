@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import coil3.compose.AsyncImage
 import dev.mellow.core.common.artworkUri
+import dev.mellow.core.common.getArtworkUrl
 import dev.mellow.core.model.Album
 import dev.mellow.core.model.Artist
 import dev.mellow.core.designsystem.component.ConnectionCloudIcon
@@ -276,9 +277,7 @@ fun SearchContent(
                             ResultRow(
                                 title = album.name,
                                 subtitle = "${album.artistName ?: ""} · ${album.year ?: ""}",
-                                imageUrl = if (serverUrl.isNotEmpty() && album.imageId != null) {
-                                    artworkUri(album.imageId!!)
-                                } else null,
+                                imageUrl = getArtworkUrl(serverUrl, album.imageId),
                                 typeTag = "Album",
                                 onClick = { onResultInteracted(); onAlbumClick(album.id) },
                             )
@@ -291,9 +290,7 @@ fun SearchContent(
                             ResultRow(
                                 title = artist.name,
                                 subtitle = if (artist.albumCount > 0) "${artist.albumCount} albums" else "Artist",
-                                imageUrl = if (serverUrl.isNotEmpty() && artist.imageId != null) {
-                                    artworkUri(artist.imageId!!)
-                                } else null,
+                                imageUrl = getArtworkUrl(serverUrl, artist.imageId),
                                 typeTag = "Artist",
                                 isRound = true,
                                 onClick = { onResultInteracted(); onArtistClick(artist.id) },
@@ -466,18 +463,18 @@ private fun TopResultRow(result: SearchResult, serverUrl: String, onClick: () ->
     val (title, subtitle, imageUrl, isRound) = when (result) {
         is SearchResult.ArtistResult -> {
             val a = result.artist
-            val img = if (serverUrl.isNotEmpty() && a.imageId != null) artworkUri(a.imageId!!) else null
+            val img = getArtworkUrl(serverUrl, a.imageId)
             listOf(a.name, if (a.albumCount > 0) "Artist · ${a.albumCount} albums" else "Artist", img, true)
         }
         is SearchResult.AlbumResult -> {
             val a = result.album
-            val img = if (serverUrl.isNotEmpty() && a.imageId != null) artworkUri(a.imageId!!) else null
+            val img = getArtworkUrl(serverUrl, a.imageId)
             listOf(a.name, "Album · ${a.artistName ?: ""}", img, false)
         }
         is SearchResult.TrackResult -> {
             val t = result.track
             val imgId = t.imageId ?: t.albumId
-            val img = if (imgId != null) artworkUri(imgId) else null
+            val img = getArtworkUrl(serverUrl, imgId)
             listOf(t.name, "Track · ${t.artistName ?: ""}", img, false)
         }
     }
@@ -579,7 +576,6 @@ private fun formatDuration(track: Track): String {
 }
 
 private fun trackImageUrl(serverUrl: String, track: Track): String? {
-    if (serverUrl.isEmpty()) return null
     val imgId = track.imageId ?: track.albumId ?: return null
-    return artworkUri(imgId)
+    return getArtworkUrl(serverUrl, imgId)
 }

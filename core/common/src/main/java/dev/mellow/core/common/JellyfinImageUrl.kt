@@ -15,6 +15,23 @@ fun jellyfinImageUrl(
     return if (apiKey != null) "$base&api_key=$apiKey" else base
 }
 
+fun getArtworkUrl(
+    serverUrl: String?,
+    imageId: String?,
+    maxWidth: Int = 600,
+    quality: Int = 90,
+    apiKey: String? = null,
+): String? {
+    if (imageId.isNullOrEmpty()) return null
+    return if (imageId.startsWith("local_")) {
+        artworkUri(imageId)
+    } else if (!serverUrl.isNullOrEmpty() && serverUrl != "local://device") {
+        jellyfinImageUrl(serverUrl, imageId, maxWidth, quality, apiKey)
+    } else {
+        artworkUri(imageId)
+    }
+}
+
 fun jellyfinStreamUrl(
     serverUrl: String,
     itemId: String,

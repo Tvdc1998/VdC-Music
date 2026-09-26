@@ -1,5 +1,10 @@
 package dev.mellow.feature.library
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -47,6 +52,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.painter.ColorPainter
 import coil3.compose.AsyncImage
+import dev.mellow.core.designsystem.component.AlbumGridSkeleton
+import dev.mellow.core.designsystem.component.ArtistListSkeleton
+import dev.mellow.core.designsystem.component.TrackListSkeleton
 import dev.mellow.core.designsystem.component.AdaptiveTrackGrid
 import dev.mellow.core.designsystem.component.AlbumCard
 import dev.mellow.core.designsystem.component.ArtistRow
@@ -63,6 +71,7 @@ import dev.mellow.core.designsystem.theme.MellowSpacing
 import dev.mellow.core.designsystem.theme.MellowTheme
 import dev.mellow.core.designsystem.theme.WindowWidthClass
 import dev.mellow.core.common.artworkUri
+import dev.mellow.core.common.getArtworkUrl
 
 data class LibraryPlaylistItem(val id: String, val name: String, val trackCount: Int, val imageId: String?)
 
@@ -104,6 +113,9 @@ fun LibraryScreen(
     selectedGenre: String? = null,
     onClearGenre: () -> Unit = {},
     initialTab: Int = 0,
+    servers: List<dev.mellow.core.model.Server> = emptyList(),
+    activeServerId: String = "",
+    onSwitchServer: (String) -> Unit = {},
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(initialTab) }
     var isGridView by rememberSaveable { mutableStateOf(true) }
@@ -129,6 +141,9 @@ fun LibraryScreen(
                     showViewToggle = selectedTab == 0,
                     isGridView = isGridView,
                     onToggleView = { isGridView = !isGridView },
+                    servers = servers,
+                    activeServerId = activeServerId,
+                    onSwitchServer = onSwitchServer,
                 )
                 MellowTabBar(
                     tabs = TABS,
@@ -147,23 +162,31 @@ fun LibraryScreen(
     ) { contentPadding ->
         val topPadding = contentPadding.calculateTopPadding()
         val showLoading = isLoading || isSyncing
-        when (selectedTab) {
-            0 -> if (showLoading && albumItems.isEmpty()) LoadingContent(message = "Syncing albums…")
-                 else if (albumItems.isEmpty()) EmptyContent("No albums yet")
-                 else if (isGridView) AlbumsPanel(albumItems, serverUrl, onAlbumClick, topPadding)
-                 else AlbumsListPanel(albumItems, serverUrl, onAlbumClick, topPadding)
-            1 -> if (showLoading && artists.isEmpty()) LoadingContent(message = "Syncing artists…")
-                 else if (artists.isEmpty()) EmptyContent("No artists yet")
-                 else ArtistsPanel(artists, serverUrl, onArtistClick, topPadding)
-            2 -> if (showLoading && tracks.isEmpty()) LoadingContent(message = "Syncing tracks…")
-                 else if (tracks.isEmpty()) EmptyContent("No tracks yet")
-                 else TracksPanel(tracks, serverUrl, onTrackClick, onTrackMenuClick, topPadding)
-            3 -> if (showLoading && genres.isEmpty()) LoadingContent(message = "Syncing genres…")
-                 else if (genres.isEmpty()) EmptyContent("No genres yet")
-                 else GenresPanel(genres, onGenreClick, topPadding)
-            4 -> if (showLoading && playlists.isEmpty()) LoadingContent(message = "Syncing playlists\u2026")
-                 else if (playlists.isEmpty()) EmptyContent("No playlists yet")
-                 else PlaylistsPanel(playlists, serverUrl, onPlaylistClick, onCreatePlaylist, topPadding)
+        AnimatedContent(
+            targetState = selectedTab,
+            transitionSpec = {
+                fadeIn(tween(220)) togetherWith fadeOut(tween(180))
+            },
+            label = "tab_transition",
+        ) { targetTab ->
+            when (targetTab) {
+                0 -> if (showLoading && albumItems.isEmpty()) AlbumGridSkeleton(topPadding = topPadding)
+                     else if (albumItems.isEmpty()) EmptyContent("No albums yet")
+                     else if (isGridView) AlbumsPanel(albumItems, serverUrl, onAlbumClick, topPadding)
+                     else AlbumsListPanel(albumItems, serverUrl, onAlbumClick, topPadding)
+                1 -> if (showLoading && artists.isEmpty()) ArtistListSkeleton(topPadding = topPadding)
+                     else if (artists.isEmpty()) EmptyContent("No artists yet")
+                     else ArtistsPanel(artists, serverUrl, onArtistClick, topPadding)
+                2 -> if (showLoading && tracks.isEmpty()) TrackListSkeleton(topPadding = topPadding)
+                     else if (tracks.isEmpty()) EmptyContent("No tracks yet")
+                     else TracksPanel(tracks, serverUrl, onTrackClick, onTrackMenuClick, topPadding)
+                3 -> if (showLoading && genres.isEmpty()) LoadingContent(message = "Syncing genres…")
+                     else if (genres.isEmpty()) EmptyContent("No genres yet")
+                     else GenresPanel(genres, onGenreClick, topPadding)
+                4 -> if (showLoading && playlists.isEmpty()) AlbumGridSkeleton(topPadding = topPadding)
+                     else if (playlists.isEmpty()) EmptyContent("No playlists yet")
+                     else PlaylistsPanel(playlists, serverUrl, onPlaylistClick, onCreatePlaylist, topPadding)
+            }
         }
     }
 }
@@ -183,8 +206,12 @@ private fun LibraryTopBar(
     showViewToggle: Boolean = false,
     isGridView: Boolean = true,
     onToggleView: () -> Unit = {},
+    servers: List<dev.mellow.core.model.Server> = emptyList(),
+    activeServerId: String = "",
+    onSwitchServer: (String) -> Unit = {},
 ) {
     var showSortMenu by remember { mutableStateOf(false) }
+    var showServerMenu by remember { mutableStateOf(false) }
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -193,11 +220,75 @@ private fun LibraryTopBar(
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(horizontal = MellowSpacing.Sp4, vertical = MellowSpacing.Sp3),
     ) {
-        Text(
-            text = "Library",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MellowTheme.colors.foreground,
-        )
+        Column {
+            Text(
+                text = "Library",
+                style = MaterialTheme.typography.headlineLarge,
+                color = MellowTheme.colors.foreground,
+            )
+            if (servers.size > 1) {
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(MellowSpacing.Sp3))
+                            .background(MellowTheme.colors.surface)
+                            .clickable { showServerMenu = true }
+                            .padding(horizontal = MellowSpacing.Sp2, vertical = MellowSpacing.Sp1),
+                    ) {
+                        Icon(
+                            imageVector = if (activeServerId == "local_device") PhosphorIcons.DeviceMobile else PhosphorIcons.HardDrives,
+                            contentDescription = null,
+                            tint = MellowTheme.colors.accentStrong,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(MellowSpacing.Sp1))
+                        Text(
+                            text = servers.find { it.id == activeServerId }?.name?.ifBlank { if (activeServerId == "local_device") "Local Device" else "Jellyfin" }
+                                ?: if (activeServerId == "local_device") "Local Device" else "Jellyfin",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MellowTheme.colors.foreground,
+                        )
+                        Spacer(Modifier.width(MellowSpacing.Sp1))
+                        Icon(
+                            imageVector = PhosphorIcons.CaretDown,
+                            contentDescription = "Switch library",
+                            tint = MellowTheme.colors.muted,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showServerMenu,
+                        onDismissRequest = { showServerMenu = false },
+                    ) {
+                        servers.forEach { server ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = if (server.id == "local_device") PhosphorIcons.DeviceMobile else PhosphorIcons.HardDrives,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = if (server.id == activeServerId) MellowTheme.colors.accentStrong else MellowTheme.colors.muted,
+                                        )
+                                        Spacer(Modifier.width(MellowSpacing.Sp2))
+                                        Text(
+                                            text = server.name.ifBlank { if (server.id == "local_device") "Local Device" else "Jellyfin" },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (server.id == activeServerId) MellowTheme.colors.accentStrong else MellowTheme.colors.foreground,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    showServerMenu = false
+                                    onSwitchServer(server.id)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
         Spacer(modifier = Modifier.weight(1f))
         ConnectionCloudIcon(
             isConnected = isConnected,
@@ -332,9 +423,7 @@ private fun AlbumsPanel(albums: List<AlbumItem>, serverUrl: String?, onAlbumClic
             AlbumCard(
                 title = album.name,
                 artist = album.artist,
-                imageUrl = if (serverUrl != null && album.imageId != null) {
-                    artworkUri(album.imageId)
-                } else null,
+                imageUrl = getArtworkUrl(serverUrl, album.imageId),
                 onClick = { onAlbumClick(album.id) },
                 sharedElementKey = "album_art_library_${album.id}",
             )
@@ -356,9 +445,7 @@ private fun AlbumsListPanel(albums: List<AlbumItem>, serverUrl: String?, onAlbum
                     .padding(vertical = MellowSpacing.Sp2),
             ) {
                 AsyncImage(
-                    model = if (serverUrl != null && album.imageId != null) {
-                        artworkUri(album.imageId)
-                    } else null,
+                    model = getArtworkUrl(serverUrl, album.imageId),
                     contentDescription = album.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
@@ -403,9 +490,7 @@ private fun ArtistsPanel(artists: List<ArtistItem>, serverUrl: String?, onArtist
         ArtistRow(
             name = artist.name,
             albumCount = artist.albumCount,
-            imageUrl = if (serverUrl != null && artist.imageId != null) {
-                artworkUri(artist.imageId)
-            } else null,
+            imageUrl = getArtworkUrl(serverUrl, artist.imageId),
             onClick = { onArtistClick(artist.id) },
             showChevron = columns == 1,
         )
@@ -430,10 +515,7 @@ private fun TracksPanel(
             title = track.title,
             subtitle = "${track.artist} · ${track.album}",
             duration = track.duration,
-            imageUrl = if (serverUrl != null) {
-                val imgId = track.imageId ?: track.albumId
-                if (imgId != null) artworkUri(imgId) else null
-            } else null,
+            imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
             onClick = { onTrackClick(track.id) },
             onMenuClick = { onTrackMenuClick(track.id) },
             showDivider = false,
@@ -480,9 +562,7 @@ private fun PlaylistsPanel(
                     .padding(vertical = MellowSpacing.Sp2),
             ) {
                 AsyncImage(
-                    model = if (serverUrl != null && playlist.imageId != null) {
-                        artworkUri(playlist.imageId)
-                    } else null,
+                    model = getArtworkUrl(serverUrl, playlist.imageId),
                     contentDescription = playlist.name,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier

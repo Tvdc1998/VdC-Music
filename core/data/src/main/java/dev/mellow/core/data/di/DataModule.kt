@@ -9,6 +9,10 @@ import dev.mellow.core.data.repository.DownloadRepository
 import dev.mellow.core.data.repository.DownloadRepositoryImpl
 import dev.mellow.core.data.repository.LibraryRepository
 import dev.mellow.core.data.repository.LibraryRepositoryImpl
+import dev.mellow.core.data.repository.LyricsRepository
+import dev.mellow.core.data.repository.LyricsRepositoryImpl
+import dev.mellow.core.data.repository.MetadataRepository
+import dev.mellow.core.data.repository.MetadataRepositoryImpl
 import dev.mellow.core.data.repository.PlaylistRepository
 import dev.mellow.core.data.repository.PlaylistRepositoryImpl
 import dev.mellow.core.data.repository.UserRepository
@@ -33,4 +37,10 @@ abstract class DataModule {
 
     @Binds
     abstract fun bindPlaylistRepository(impl: PlaylistRepositoryImpl): PlaylistRepository
+
+    @Binds
+    abstract fun bindMetadataRepository(impl: MetadataRepositoryImpl): MetadataRepository
+
+    @Binds
+    abstract fun bindLyricsRepository(impl: LyricsRepositoryImpl): LyricsRepository
 }

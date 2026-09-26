@@ -1,5 +1,9 @@
 package dev.mellow.app.navigation
 
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContentTransitionScope.SlideDirection
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -13,6 +17,7 @@ import androidx.compose.ui.platform.LocalContext
 import dev.mellow.core.designsystem.theme.DevicePosture
 import dev.mellow.core.designsystem.theme.LocalFoldableState
 import dev.mellow.core.designsystem.theme.rememberFoldableState
+import dev.mellow.core.designsystem.component.rememberArtworkPalette
 import com.mikepenz.aboutlibraries.Libs
 import com.mikepenz.aboutlibraries.util.withContext
 import dev.mellow.app.dev.DevIconComparisonScreen
@@ -103,6 +108,7 @@ import dev.mellow.core.network.ConnectionState
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import dev.mellow.core.common.artworkUri
+import dev.mellow.core.common.getArtworkUrl
 import dev.mellow.core.model.AlbumDownloadState
 import dev.mellow.core.model.DownloadState
 import dev.mellow.core.designsystem.component.AddToPlaylistSheet
@@ -113,6 +119,7 @@ import dev.mellow.feature.home.FavoritesViewModel
 import dev.mellow.feature.home.HomeScreen
 import dev.mellow.feature.home.HomeViewModel
 import dev.mellow.feature.home.PlaylistDetailScreen
+import dev.mellow.feature.library.EditMetadataBottomSheet
 import dev.mellow.feature.home.PlaylistDetailTrack
 import dev.mellow.feature.home.PlaylistDetailViewModel
 import dev.mellow.feature.home.PlaylistItem
@@ -217,12 +224,14 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
     val isCleaningUp by mainViewModel.isCleaningUp.collectAsState()
     val serverUrl by mainViewModel.serverUrl.collectAsState()
     val connectionState by mainViewModel.connectionState.collectAsState()
+    val servers by mainViewModel.servers.collectAsState()
     val sheetState = rememberExpandableSheetState()
     val sharedArtPositions = remember { SharedArtPositions() }
     val density = androidx.compose.ui.platform.LocalDensity.current
 
     var contextMenuState by remember { mutableStateOf<ContextMenuState?>(null) }
     var trackInfoTrack by remember { mutableStateOf<Track?>(null) }
+    var editMetadataTrackId by remember { mutableStateOf<String?>(null) }
     var showAddToPlaylistSheet by remember { mutableStateOf(false) }
     var addToPlaylistTrackId by remember { mutableStateOf<String?>(null) }
     var showArtistPicker by remember { mutableStateOf(false) }
@@ -243,10 +252,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                 album = track.albumName ?: "",
                 albumId = track.albumId,
                 artistId = track.resolvedArtistId ?: track.artistId,
-                            imageUrl = if (serverUrl != null) {
-                                val imgId = track.imageId ?: track.albumId
-                                if (imgId != null) artworkUri(imgId) else null
-                            } else null,
+                imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                 isFavorite = track.isFavorite,
                 isDownloaded = false,
             ),
@@ -277,10 +283,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
             MiniPlayer(
                 title = track.name,
                 artist = track.artistName ?: "",
-                imageUrl = if (serverUrl != null) {
-                    val imgId = track.imageId ?: track.albumId
-                    if (imgId != null) artworkUri(imgId) else null
-                } else null,
+                imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                 isPlaying = playbackState.isPlaying,
                 isBuffering = playbackState.isBuffering,
                 progress = if (positionState.durationMs > 0) {
@@ -320,6 +323,11 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
             with(density) { MellowSpacing.BottomNavHeight.toPx() }
         } else 0f
 
+    val activeTrack = playbackState.currentTrack
+    val activeArtUrl = getArtworkUrl(serverUrl, activeTrack?.imageId ?: activeTrack?.albumId)
+    val activePalette = rememberArtworkPalette(artworkKey = activeArtUrl, imageUrl = activeArtUrl)
+    val activeAccentColor = activePalette?.primary ?: activePalette?.accent
+
     val showExpandedMiniPlayer = isExpanded && !isFullScreen && hasTrack && !isTabletPortrait && !isTabletop
     val miniPlayerPadding = if (showExpandedMiniPlayer) MellowSpacing.MiniPlayerHeight + MellowSpacing.Sp2 else 0.dp
     CompositionLocalProvider(
@@ -333,6 +341,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
             MellowNavigationRail(
                 selectedRoute = selectedTabRoute,
                 onNavigate = navigateToTab,
+                activeAccentColor = activeAccentColor,
             )
         }
 
@@ -358,6 +367,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                     MellowBottomNavBar(
                         selectedRoute = selectedTabRoute,
                         onNavigate = navigateToTab,
+                        activeAccentColor = activeAccentColor,
                     )
                 }
             }
@@ -433,6 +443,9 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                             navController.navigate("library?genre=${android.net.Uri.encode(genre)}")
                         },
                         isLoading = homeState.isLoading,
+                        servers = servers,
+                        activeServerId = serverId,
+                        onSwitchServer = mainViewModel::switchServer,
                     )
                     }
                 }
@@ -550,6 +563,9 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                         onGenreClick = { genre -> selectedGenre = genre },
                         selectedGenre = selectedGenre,
                         onClearGenre = { selectedGenre = null },
+                        servers = servers,
+                        activeServerId = serverId,
+                        onSwitchServer = mainViewModel::switchServer,
                     )
                     }
                 }
@@ -654,6 +670,26 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                     val totalDownloadedBytes by settingsVm.totalDownloadedBytes.collectAsState()
                     val lowPowerMode by settingsVm.lowPowerMode.collectAsState()
 
+                    val isLocalScanning by settingsVm.isLocalScanning.collectAsState()
+                    val localScanResult by settingsVm.localScanResult.collectAsState()
+                    val context = LocalContext.current
+
+                    val permissionToRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        android.Manifest.permission.READ_MEDIA_AUDIO
+                    } else {
+                        android.Manifest.permission.READ_EXTERNAL_STORAGE
+                    }
+
+                    val permissionLauncher = rememberLauncherForActivityResult(
+                        ActivityResultContracts.RequestPermission()
+                    ) { isGranted ->
+                        if (isGranted) {
+                            settingsVm.scanLocalLibrary()
+                        } else {
+                            Toast.makeText(context, "Storage permission required to scan local music", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+
                     SettingsScreen(
                         appVersion = settingsVm.appVersion,
                         onBack = { navController.popBackStack() },
@@ -681,6 +717,18 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                         onClearAllDownloads = settingsVm::clearAllDownloads,
                         lowPowerMode = lowPowerMode,
                         onLowPowerModeChange = settingsVm::setLowPowerMode,
+                        isLocalScanning = isLocalScanning,
+                        localScanResult = localScanResult,
+                        onScanLocalClick = {
+                            if (settingsVm.hasStoragePermission()) {
+                                settingsVm.scanLocalLibrary()
+                            } else {
+                                permissionLauncher.launch(permissionToRequest)
+                            }
+                        },
+                        onEqualizerClick = {
+                            navController.navigate("equalizer")
+                        },
                         onDevToolsClick = {
                             navController.navigate("dev_tools")
                         },
@@ -688,6 +736,31 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                             navController.navigate("licenses")
                         },
                         onLogout = mainViewModel::logout,
+                        servers = servers,
+                        activeServerId = serverId,
+                        onSwitchServer = mainViewModel::switchServer,
+                    )
+                }
+                composable(
+                    "equalizer",
+                    enterTransition = { slideIntoContainer(SlideDirection.Start, tween(200)) },
+                    exitTransition = { fadeOut(tween(150)) },
+                    popEnterTransition = { fadeIn(tween(150)) },
+                    popExitTransition = { slideOutOfContainer(SlideDirection.End, tween(200)) },
+                ) {
+                    val eqVm: dev.mellow.feature.player.EqualizerViewModel = hiltViewModel()
+                    val eqState by eqVm.equalizerState.collectAsState()
+
+                    dev.mellow.feature.player.EqualizerScreen(
+                        state = eqState,
+                        onBack = { navController.popBackStack() },
+                        onToggleEnabled = eqVm::toggleEnabled,
+                        onSelectPreset = eqVm::selectPreset,
+                        onBandLevelChange = eqVm::setBandLevel,
+                        onBassBoostChange = eqVm::setBassBoost,
+                        onPlaybackSpeedChange = eqVm::setPlaybackSpeed,
+                        onPitchWithSpeedChange = eqVm::setPitchWithSpeed,
+                        onReset = eqVm::reset,
                     )
                 }
                 composable("dev_tools") {
@@ -800,10 +873,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                         sharedElementSource = routeSource,
                         albumName = albumState.album?.name ?: "",
                         artistName = albumState.album?.artistName ?: "",
-                        albumImageUrl = if (serverUrl != null) {
-                            val imgId = albumState.album?.imageId ?: routeAlbumId
-                            artworkUri(imgId)
-                        } else null,
+                        albumImageUrl = getArtworkUrl(serverUrl, albumState.album?.imageId ?: routeAlbumId),
                         year = albumState.album?.year,
                         expectedTrackCount = albumState.album?.trackCount ?: 0,
                         tracks = mappedTracks,
@@ -899,7 +969,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                                             PickerArtist(
                                                 id = a.id,
                                                 name = a.name,
-                                                imageUrl = if (serverUrl != null) artworkUri(a.id) else null,
+                                                imageUrl = getArtworkUrl(serverUrl, a.imageTag ?: a.id),
                                                 albumCount = mainViewModel.countAlbumsByArtistCrossRef(a.id),
                                             )
                                         }
@@ -922,10 +992,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                                 title = track.name,
                                 duration = formatTrackDuration(track.duration),
                                 albumName = track.albumName ?: "",
-                                imageUrl = if (serverUrl != null) {
-                                    val imgId = track.imageId ?: track.albumId
-                                    if (imgId != null) artworkUri(imgId) else null
-                                } else null,
+                                imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                             )
                         }
                     }
@@ -959,9 +1026,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                         layout = artistLayout,
                         splitPaneWidth = artistSplitWidth,
                         artistName = artistState.artist?.name ?: "",
-                        artistImageUrl = if (serverUrl != null && artistState.artist?.imageId != null) {
-                            artworkUri(artistState.artist!!.imageId!!)
-                        } else null,
+                        artistImageUrl = getArtworkUrl(serverUrl, artistState.artist?.imageId),
                         albumCount = albums.size,
                         totalTrackCount = artistState.totalTrackCount,
                         overview = artistState.artist?.overview,
@@ -1040,10 +1105,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                                 title = track.name,
                                 artistName = track.artistName ?: "",
                                 duration = formatTrackDuration(track.duration),
-                                imageUrl = if (serverUrl != null) {
-                                    val imgId = track.imageId ?: track.albumId
-                                    if (imgId != null) artworkUri(imgId) else null
-                                } else null,
+                                imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                             )
                         }
                     }
@@ -1101,10 +1163,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                             artist = track.artistName ?: "",
                             album = track.albumName ?: "",
                             duration = formatTrackDuration(track.duration),
-                            imageUrl = if (serverUrl != null) {
-                                val imgId = track.imageId ?: track.albumId
-                                if (imgId != null) artworkUri(imgId) else null
-                            } else null,
+                            imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                         )
                     }
 
@@ -1118,10 +1177,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                                     artist = track.artistName ?: "",
                                     album = track.albumName ?: "",
                                     duration = formatTrackDuration(track.duration),
-                                    imageUrl = if (serverUrl != null) {
-                                        val imgId = track.imageId ?: track.albumId
-                                        if (imgId != null) artworkUri(imgId) else null
-                                    } else null,
+                                    imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                                 )
                             }
                     }
@@ -1159,6 +1215,8 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
 
                     var lyrics by remember { mutableStateOf<List<LyricsLine>>(emptyList()) }
                     var isLoadingLyrics by remember { mutableStateOf(true) }
+                    var showSearchLyricsSheet by remember { mutableStateOf(false) }
+                    val scope = rememberCoroutineScope()
 
                     LaunchedEffect(track?.id) {
                         isLoadingLyrics = true
@@ -1175,10 +1233,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                     LyricsScreen(
                         trackName = track?.name ?: "",
                         artistName = track?.artistName ?: "",
-                        albumImageUrl = if (serverUrl != null) {
-                            val imgId = track?.imageId ?: track?.albumId
-                            if (imgId != null) artworkUri(imgId) else null
-                        } else null,
+                        albumImageUrl = getArtworkUrl(serverUrl, track?.imageId ?: track?.albumId),
                         lyrics = lyrics,
                         isLoadingLyrics = isLoadingLyrics,
                         positionMs = positionState.positionMs,
@@ -1189,7 +1244,34 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                         onPlayPauseClick = { mainViewModel.player.playPause() },
                         onSkipNextClick = { mainViewModel.player.skipNext() },
                         onSkipPreviousClick = { mainViewModel.player.skipPrevious() },
+                        onSearchLyricsClick = if (track != null) { { showSearchLyricsSheet = true } } else null,
                     )
+
+                    if (showSearchLyricsSheet && track != null) {
+                        dev.mellow.feature.player.SearchLyricsBottomSheet(
+                            initialQuery = "${track.artistName ?: ""} ${track.name}".trim(),
+                            onDismiss = { showSearchLyricsSheet = false },
+                            onSearch = { query ->
+                                when (val res = mainViewModel.searchOnlineLyrics(query)) {
+                                    is dev.mellow.core.common.MellowResult.Success -> res.data
+                                    else -> emptyList()
+                                }
+                            },
+                            onSelectResult = { selectedResult ->
+                                showSearchLyricsSheet = false
+                                scope.launch {
+                                    val success = mainViewModel.saveOnlineLyrics(track.id, selectedResult)
+                                    if (success) {
+                                        isLoadingLyrics = true
+                                        lyrics = mainViewModel.fetchLyrics(track.id).map { r ->
+                                            LyricsLine(startMs = r.startMs, text = r.text)
+                                        }
+                                        isLoadingLyrics = false
+                                    }
+                                }
+                            },
+                        )
+                    }
                 }
             }
                 }
@@ -1223,10 +1305,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
             sheetState = sheetState,
             trackName = track.name,
             artistName = track.artistName ?: "",
-            albumImageUrl = if (serverUrl != null) {
-                val imgId = track.imageId ?: track.albumId
-                if (imgId != null) artworkUri(imgId) else null
-            } else null,
+            albumImageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
             isPlaying = playbackState.isPlaying,
             isBuffering = playbackState.isBuffering,
             progress = if (positionState.durationMs > 0) {
@@ -1268,10 +1347,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                     trackName = track.name,
                     artistName = track.artistName ?: "",
                     albumName = track.albumName ?: "",
-                    albumImageUrl = if (serverUrl != null) {
-                        val imgId = track.imageId ?: track.albumId
-                        if (imgId != null) artworkUri(imgId) else null
-                    } else null,
+                    albumImageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                     isPlaying = playbackState.isPlaying,
                     progress = if (positionState.durationMs > 0) {
                         positionState.positionMs.toFloat() / positionState.durationMs
@@ -1284,6 +1360,10 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                     onCollapse = onCollapse,
                     onQueueClick = onQueueClick,
                     onLyricsClick = onLyricsClick,
+                    onEqualizerClick = {
+                        scope.launch { sheetState.collapse() }
+                        navController.navigate("equalizer")
+                    },
                     onPlayPauseClick = { mainViewModel.player.playPause() },
                     onSkipNextClick = { mainViewModel.player.skipNext() },
                     onSkipPreviousClick = { mainViewModel.player.skipPrevious() },
@@ -1314,10 +1394,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                             dev.mellow.feature.player.QueueTrack(
                                 id = t.id, title = t.name, artist = t.artistName ?: "",
                                 album = t.albumName ?: "", duration = formatTrackDuration(t.duration),
-                                imageUrl = if (serverUrl != null) {
-                                    val imgId = t.imageId ?: t.albumId
-                                    if (imgId != null) artworkUri(imgId) else null
-                                } else null,
+                                imageUrl = getArtworkUrl(serverUrl, t.imageId ?: t.albumId),
                             )
                         }
                         val sideUpNext = remember(sideQueue, currentIdx, serverUrl) {
@@ -1325,10 +1402,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                                 dev.mellow.feature.player.QueueTrack(
                                     id = t.id, title = t.name, artist = t.artistName ?: "",
                                     album = t.albumName ?: "", duration = formatTrackDuration(t.duration),
-                                    imageUrl = if (serverUrl != null) {
-                                        val imgId = t.imageId ?: t.albumId
-                                        if (imgId != null) artworkUri(imgId) else null
-                                    } else null,
+                                    imageUrl = getArtworkUrl(serverUrl, t.imageId ?: t.albumId),
                                 )
                             }
                         }
@@ -1336,6 +1410,8 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                         val lyricsTrack = pState.currentTrack
                         var sideLyrics by remember { mutableStateOf<List<dev.mellow.feature.player.LyricsLine>>(emptyList()) }
                         var sideIsLoadingLyrics by remember { mutableStateOf(true) }
+                        var showSideSearchLyricsSheet by remember { mutableStateOf(false) }
+                        val sideScope = rememberCoroutineScope()
                         LaunchedEffect(lyricsTrack?.id) {
                             sideIsLoadingLyrics = true
                             sideLyrics = if (lyricsTrack != null) {
@@ -1447,10 +1523,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                                         embedded = true,
                                         trackName = lyricsTrack?.name ?: "",
                                         artistName = lyricsTrack?.artistName ?: "",
-                                        albumImageUrl = if (serverUrl != null) {
-                                            val imgId = lyricsTrack?.imageId ?: lyricsTrack?.albumId
-                                            if (imgId != null) artworkUri(imgId) else null
-                                        } else null,
+                                        albumImageUrl = getArtworkUrl(serverUrl, lyricsTrack?.imageId ?: lyricsTrack?.albumId),
                                         lyrics = sideLyrics,
                                         isLoadingLyrics = sideIsLoadingLyrics,
                                         positionMs = positionState.positionMs,
@@ -1461,8 +1534,35 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                                         onPlayPauseClick = { mainViewModel.player.playPause() },
                                         onSkipNextClick = { mainViewModel.player.skipNext() },
                                         onSkipPreviousClick = { mainViewModel.player.skipPrevious() },
+                                        onSearchLyricsClick = if (lyricsTrack != null) { { showSideSearchLyricsSheet = true } } else null,
                                     )
                                 }
+                            }
+
+                            if (showSideSearchLyricsSheet && lyricsTrack != null) {
+                                dev.mellow.feature.player.SearchLyricsBottomSheet(
+                                    initialQuery = "${lyricsTrack.artistName ?: ""} ${lyricsTrack.name}".trim(),
+                                    onDismiss = { showSideSearchLyricsSheet = false },
+                                    onSearch = { query ->
+                                        when (val res = mainViewModel.searchOnlineLyrics(query)) {
+                                            is dev.mellow.core.common.MellowResult.Success -> res.data
+                                            else -> emptyList()
+                                        }
+                                    },
+                                    onSelectResult = { selectedResult ->
+                                        showSideSearchLyricsSheet = false
+                                        sideScope.launch {
+                                            val success = mainViewModel.saveOnlineLyrics(lyricsTrack.id, selectedResult)
+                                            if (success) {
+                                                sideIsLoadingLyrics = true
+                                                sideLyrics = mainViewModel.fetchLyrics(lyricsTrack.id).map { r ->
+                                                    dev.mellow.feature.player.LyricsLine(startMs = r.startMs, text = r.text)
+                                                }
+                                                sideIsLoadingLyrics = false
+                                            }
+                                        }
+                                    },
+                                )
                             }
                         }
                     },
@@ -1477,10 +1577,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                     dev.mellow.feature.player.QueueTrack(
                         id = t.id, title = t.name, artist = t.artistName ?: "",
                         album = t.albumName ?: "", duration = formatTrackDuration(t.duration),
-                        imageUrl = if (serverUrl != null) {
-                            val imgId = t.imageId ?: t.albumId
-                            if (imgId != null) artworkUri(imgId) else null
-                        } else null,
+                        imageUrl = getArtworkUrl(serverUrl, t.imageId ?: t.albumId),
                     )
                 }
 
@@ -1489,10 +1586,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                         dev.mellow.feature.player.QueueTrack(
                             id = t.id, title = t.name, artist = t.artistName ?: "",
                             album = t.albumName ?: "", duration = formatTrackDuration(t.duration),
-                            imageUrl = if (serverUrl != null) {
-                                val imgId = t.imageId ?: t.albumId
-                                if (imgId != null) artworkUri(imgId) else null
-                            } else null,
+                            imageUrl = getArtworkUrl(serverUrl, t.imageId ?: t.albumId),
                         )
                     }
                 }
@@ -1528,6 +1622,8 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
 
                 var lyrics by remember { mutableStateOf<List<dev.mellow.feature.player.LyricsLine>>(emptyList()) }
                 var isLoadingLyrics by remember { mutableStateOf(true) }
+                var showSearchLyricsSheet by remember { mutableStateOf(false) }
+                val scope = rememberCoroutineScope()
 
                 LaunchedEffect(lyricsTrack?.id) {
                     isLoadingLyrics = true
@@ -1546,10 +1642,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                     showControls = true,
                     trackName = lyricsTrack?.name ?: "",
                     artistName = lyricsTrack?.artistName ?: "",
-                    albumImageUrl = if (serverUrl != null) {
-                        val imgId = lyricsTrack?.imageId ?: lyricsTrack?.albumId
-                        if (imgId != null) artworkUri(imgId) else null
-                    } else null,
+                    albumImageUrl = getArtworkUrl(serverUrl, lyricsTrack?.imageId ?: lyricsTrack?.albumId),
                     lyrics = lyrics,
                     isLoadingLyrics = isLoadingLyrics,
                     positionMs = positionState.positionMs,
@@ -1560,7 +1653,34 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                     onPlayPauseClick = { mainViewModel.player.playPause() },
                     onSkipNextClick = { mainViewModel.player.skipNext() },
                     onSkipPreviousClick = { mainViewModel.player.skipPrevious() },
+                    onSearchLyricsClick = if (lyricsTrack != null) { { showSearchLyricsSheet = true } } else null,
                 )
+
+                if (showSearchLyricsSheet && lyricsTrack != null) {
+                    dev.mellow.feature.player.SearchLyricsBottomSheet(
+                        initialQuery = "${lyricsTrack.artistName ?: ""} ${lyricsTrack.name}".trim(),
+                        onDismiss = { showSearchLyricsSheet = false },
+                        onSearch = { query ->
+                            when (val res = mainViewModel.searchOnlineLyrics(query)) {
+                                is dev.mellow.core.common.MellowResult.Success -> res.data
+                                else -> emptyList()
+                            }
+                        },
+                        onSelectResult = { selectedResult ->
+                            showSearchLyricsSheet = false
+                            scope.launch {
+                                val success = mainViewModel.saveOnlineLyrics(lyricsTrack.id, selectedResult)
+                                if (success) {
+                                    isLoadingLyrics = true
+                                    lyrics = mainViewModel.fetchLyrics(lyricsTrack.id).map { r ->
+                                        dev.mellow.feature.player.LyricsLine(startMs = r.startMs, text = r.text)
+                                    }
+                                    isLoadingLyrics = false
+                                }
+                            }
+                        },
+                    )
+                }
             },
             bottomNavHeightPx = sheetBottomNavPx,
         )
@@ -1568,10 +1688,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
         var parentWindowOffset by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
         if (playbackState.error == null) {
             SharedArtOverlay(
-                imageUrl = if (serverUrl != null) {
-                    val imgId = track.imageId ?: track.albumId
-                    if (imgId != null) artworkUri(imgId) else null
-                } else null,
+                imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                 dragFraction = sheetState.dragFraction,
                 positions = sharedArtPositions,
                 parentOffset = parentWindowOffset,
@@ -1618,7 +1735,7 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                             PickerArtist(
                                 id = a.id,
                                 name = a.name,
-                                imageUrl = if (serverUrl != null) artworkUri(a.id) else null,
+                                imageUrl = getArtworkUrl(serverUrl, a.imageTag ?: a.id),
                                 albumCount = mainViewModel.countAlbumsByArtistCrossRef(a.id),
                             )
                         }
@@ -1637,6 +1754,20 @@ private fun MainAppShell(serverId: String, mainViewModel: MainViewModel) {
                 trackInfoTrack = contextMenuState?.track
                 contextMenuState = null
             },
+            onEditMetadata = {
+                val tId = contextMenuState?.track?.id
+                contextMenuState = null
+                if (tId != null) {
+                    editMetadataTrackId = tId
+                }
+            },
+        )
+    }
+
+    if (editMetadataTrackId != null) {
+        EditMetadataBottomSheet(
+            trackId = editMetadataTrackId!!,
+            onDismiss = { editMetadataTrackId = null },
         )
     }
 
@@ -1728,7 +1859,7 @@ private fun TabScreenTopBar(
     ) {
         Text(
             text = when (route) {
-                MellowNavDestination.Home.route -> "Mellow"
+                MellowNavDestination.Home.route -> "VdC Music"
                 MellowNavDestination.Library.route, "library" -> "Library"
                 MellowNavDestination.Search.route -> "Search"
                 MellowNavDestination.Favorites.route -> "Favorites"

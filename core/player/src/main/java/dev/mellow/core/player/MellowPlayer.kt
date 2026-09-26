@@ -121,12 +121,11 @@ class MellowPlayer @Inject constructor(
     }
 
     suspend fun playTracks(tracks: List<Track>, startIndex: Int = 0) {
-        val server = serverDao.getActiveServer() ?: run {
-            Log.e(TAG, "No active server found")
-            return
+        val server = serverDao.getActiveServer()
+        if (server != null) {
+            serverUrl = server.url
+            apiKey = server.accessToken
         }
-        serverUrl = server.url
-        apiKey = server.accessToken
         currentQueue = tracks
 
         downloadedTrackIds = downloadDao.getDownloadedTrackIds().toSet()
@@ -300,7 +299,19 @@ class MellowPlayer @Inject constructor(
     }
 
     private fun Track.toMediaItem(): MediaItem {
-        val streamUri = Uri.parse(jellyfinStreamUrl(serverUrl, id, apiKey))
+        val streamUri = if (id.startsWith("local_track_")) {
+            val rawId = id.removePrefix("local_track_").toLongOrNull()
+            if (rawId != null) {
+                android.content.ContentUris.withAppendedId(
+                    android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                    rawId,
+                )
+            } else {
+                Uri.parse(jellyfinStreamUrl(serverUrl, id, apiKey))
+            }
+        } else {
+            Uri.parse(jellyfinStreamUrl(serverUrl, id, apiKey))
+        }
         val artItemId = albumId ?: id
         val artUri = Uri.parse("content://${context.packageName}.artwork/$artItemId")
         val isDownloaded = id in downloadedTrackIds

@@ -33,9 +33,11 @@ dependencies {
     implementation(libs.paging.runtime)
     implementation(libs.jellyfin.model)
     implementation(libs.jellyfin.api)
+    implementation(libs.okhttp)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.android.compiler)
 
     testImplementation(libs.bundles.testing)
+    testImplementation(libs.robolectric)
 }

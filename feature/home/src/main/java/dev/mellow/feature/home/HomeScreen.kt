@@ -31,18 +31,26 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import dev.mellow.core.designsystem.icon.PhosphorIcons
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import dev.mellow.core.common.artworkUri
+import dev.mellow.core.common.getArtworkUrl
 import dev.mellow.core.designsystem.component.AdaptiveTrackGrid
 import dev.mellow.core.designsystem.component.AlbumCard
 import dev.mellow.core.designsystem.component.LocalNavAnimatedVisibilityScope
@@ -97,6 +105,9 @@ fun HomeScreen(
     onGenreClick: (String) -> Unit = {},
     onSettingsClick: () -> Unit = {},
     isLoading: Boolean = false,
+    servers: List<dev.mellow.core.model.Server> = emptyList(),
+    activeServerId: String = "",
+    onSwitchServer: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val isExpanded = LocalWindowWidthClass.current != WindowWidthClass.Compact
@@ -112,6 +123,9 @@ fun HomeScreen(
                 isFilterActive = isFilterActive,
                 onToggleFilter = onToggleFilter,
                 onSettingsClick = onSettingsClick,
+                servers = servers,
+                activeServerId = activeServerId,
+                onSwitchServer = onSwitchServer,
             )
         },
         modifier = modifier
@@ -121,7 +135,7 @@ fun HomeScreen(
         val toolbarTopPadding = contentPadding.calculateTopPadding()
         val isEmpty = quickPicks.isEmpty() && recentlyPlayed.isEmpty() && recentlyAdded.isEmpty() && favoriteTracks.isEmpty() && genres.isEmpty()
         if (isLoading) {
-            dev.mellow.core.designsystem.component.LoadingContent()
+            dev.mellow.core.designsystem.component.AlbumGridSkeleton(topPadding = toolbarTopPadding)
         } else if (isEmpty) {
             dev.mellow.core.designsystem.component.EmptyContent("Add music to your Jellyfin library to get started")
         } else {
@@ -173,9 +187,7 @@ fun HomeScreen(
                                     CompactAlbumCard(
                                         title = album.name,
                                         artist = album.artist,
-                                        imageUrl = if (serverUrl != null && album.imageId != null) {
-                                            artworkUri(album.imageId)
-                                        } else null,
+                                        imageUrl = getArtworkUrl(serverUrl, album.imageId),
                                         onClick = { onAlbumClick(album.id, "recent") },
                                         sharedElementKey = "album_art_recent_${album.id}",
                                     )
@@ -223,9 +235,7 @@ fun HomeScreen(
                                     AlbumCard(
                                         title = album.name,
                                         artist = album.artist,
-                                        imageUrl = if (serverUrl != null && album.imageId != null) {
-                                            artworkUri(album.imageId)
-                                        } else null,
+                                        imageUrl = getArtworkUrl(serverUrl, album.imageId),
                                         onClick = { onAlbumClick(album.id, "added") },
                                         sharedElementKey = "album_art_added_${album.id}",
                                     )
@@ -257,10 +267,7 @@ fun HomeScreen(
                             title = track.title,
                             subtitle = "${track.artist} · ${track.album}",
                             duration = track.duration,
-                            imageUrl = if (serverUrl != null) {
-                                val imgId = track.imageId ?: track.albumId
-                                if (imgId != null) artworkUri(imgId) else null
-                            } else null,
+                            imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                             onClick = { onTrackClick(track.id) },
                             onMenuClick = { onTrackMenuClick(track.id) },
                             showDivider = false,
@@ -294,7 +301,12 @@ private fun HomeTopBar(
     isFilterActive: Boolean = false,
     onToggleFilter: () -> Unit = {},
     onSettingsClick: () -> Unit,
+    servers: List<dev.mellow.core.model.Server> = emptyList(),
+    activeServerId: String = "",
+    onSwitchServer: (String) -> Unit = {},
 ) {
+    var showServerMenu by remember { mutableStateOf(false) }
+
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -303,11 +315,75 @@ private fun HomeTopBar(
             .windowInsetsPadding(WindowInsets.statusBars)
             .padding(start = MellowSpacing.Sp4, end = MellowSpacing.Sp4, top = MellowSpacing.Sp3, bottom = MellowSpacing.Sp1),
     ) {
-        Text(
-            text = "Mellow",
-            style = MaterialTheme.typography.headlineLarge,
-            color = MellowTheme.colors.foreground,
-        )
+        Column {
+            Text(
+                text = "VdC Music",
+                style = MaterialTheme.typography.headlineLarge,
+                color = MellowTheme.colors.foreground,
+            )
+            if (servers.size > 1) {
+                Box {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(MellowSpacing.Sp3))
+                            .background(MellowTheme.colors.surface)
+                            .clickable { showServerMenu = true }
+                            .padding(horizontal = MellowSpacing.Sp2, vertical = MellowSpacing.Sp1),
+                    ) {
+                        Icon(
+                            imageVector = if (activeServerId == "local_device") PhosphorIcons.DeviceMobile else PhosphorIcons.HardDrives,
+                            contentDescription = null,
+                            tint = MellowTheme.colors.accentStrong,
+                            modifier = Modifier.size(14.dp),
+                        )
+                        Spacer(Modifier.width(MellowSpacing.Sp1))
+                        Text(
+                            text = servers.find { it.id == activeServerId }?.name?.ifBlank { if (activeServerId == "local_device") "Local Device" else "Jellyfin" }
+                                ?: if (activeServerId == "local_device") "Local Device" else "Jellyfin",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MellowTheme.colors.foreground,
+                        )
+                        Spacer(Modifier.width(MellowSpacing.Sp1))
+                        Icon(
+                            imageVector = PhosphorIcons.CaretDown,
+                            contentDescription = "Switch library",
+                            tint = MellowTheme.colors.muted,
+                            modifier = Modifier.size(12.dp),
+                        )
+                    }
+                    DropdownMenu(
+                        expanded = showServerMenu,
+                        onDismissRequest = { showServerMenu = false },
+                    ) {
+                        servers.forEach { server ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = if (server.id == "local_device") PhosphorIcons.DeviceMobile else PhosphorIcons.HardDrives,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = if (server.id == activeServerId) MellowTheme.colors.accentStrong else MellowTheme.colors.muted,
+                                        )
+                                        Spacer(Modifier.width(MellowSpacing.Sp2))
+                                        Text(
+                                            text = server.name.ifBlank { if (server.id == "local_device") "Local Device" else "Jellyfin" },
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = if (server.id == activeServerId) MellowTheme.colors.accentStrong else MellowTheme.colors.foreground,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    showServerMenu = false
+                                    onSwitchServer(server.id)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
         Spacer(modifier = Modifier.weight(1f))
         ConnectionCloudIcon(
             isConnected = isConnected,
@@ -371,9 +447,7 @@ private fun QuickPicksGrid(
                 CompactAlbumCard(
                     title = album.name,
                     artist = album.artist,
-                    imageUrl = if (serverUrl != null && album.imageId != null) {
-                        artworkUri(album.imageId)
-                    } else null,
+                    imageUrl = getArtworkUrl(serverUrl, album.imageId),
                     onClick = { onAlbumClick(album.id) },
                     sharedElementKey = "album_art_quick_${album.id}",
                 )
@@ -482,9 +556,7 @@ private fun AlbumCarousel(
             AlbumCard(
                 title = album.name,
                 artist = album.artist,
-                imageUrl = if (serverUrl != null && album.imageId != null) {
-                    artworkUri(album.imageId)
-                } else null,
+                imageUrl = getArtworkUrl(serverUrl, album.imageId),
                 onClick = { onAlbumClick(album.id) },
                 modifier = Modifier.width(130.dp),
                 sharedElementKey = if (sharedKeyPrefix.isNotEmpty()) "album_art_${sharedKeyPrefix}_${album.id}" else null,

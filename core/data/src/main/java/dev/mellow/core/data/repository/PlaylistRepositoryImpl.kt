@@ -45,6 +45,9 @@ class PlaylistRepositoryImpl @Inject constructor(
         }
 
     override suspend fun syncPlaylists(serverId: String): MellowResult<Unit> {
+        if (serverId == dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID) {
+            return MellowResult.Success(Unit)
+        }
         return try {
             val server = serverDao.getActiveServer() ?: return MellowResult.Success(Unit)
             val userId = UUID.fromString(server.userId)
@@ -59,6 +62,9 @@ class PlaylistRepositoryImpl @Inject constructor(
     }
 
     override suspend fun syncPlaylistTracks(playlistId: String, serverId: String): MellowResult<Unit> {
+        if (playlistId.startsWith("local_") || serverId == dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID) {
+            return MellowResult.Success(Unit)
+        }
         return try {
             val server = serverDao.getActiveServer() ?: return MellowResult.Success(Unit)
             val userId = UUID.fromString(server.userId)
@@ -90,6 +96,26 @@ class PlaylistRepositoryImpl @Inject constructor(
         return try {
             val server = serverDao.getActiveServer()
                 ?: return MellowResult.Error(IllegalStateException("No active server"))
+
+            if (serverId == dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID || server.id == dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID) {
+                val localPlaylistId = "local_playlist_${UUID.randomUUID()}"
+                playlistDao.upsert(
+                    PlaylistEntity(
+                        id = localPlaylistId,
+                        serverId = serverId,
+                        name = name,
+                        sortName = name,
+                        trackCount = 0,
+                        durationMs = 0L,
+                        imageTag = null,
+                        isFavorite = false,
+                        isLocal = true,
+                        lastSynced = System.currentTimeMillis(),
+                    ),
+                )
+                return MellowResult.Success(localPlaylistId)
+            }
+
             val userId = UUID.fromString(server.userId)
             val newId = jellyfinDataSource.createPlaylist(name, userId)
                 ?: return MellowResult.Error(IllegalStateException("Failed to create playlist"))
@@ -132,13 +158,26 @@ class PlaylistRepositoryImpl @Inject constructor(
                 ),
             )
 
+            val playlist = playlistDao.getPlaylistById(playlistId)
+            if (playlist != null) {
+                playlistDao.upsert(playlist.copy(trackCount = existingTracks + 1))
+            }
+
+            if (playlistId.startsWith("local_") || trackId.startsWith("local_") || serverId == dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID) {
+                return MellowResult.Success(Unit)
+            }
+
             val server = serverDao.getActiveServer() ?: return MellowResult.Success(Unit)
-            val userId = UUID.fromString(server.userId)
-            jellyfinDataSource.addToPlaylist(
-                playlistId = UUID.fromString(playlistId),
-                trackIds = listOf(UUID.fromString(trackId)),
-                userId = userId,
-            )
+            try {
+                val userId = UUID.fromString(server.userId)
+                jellyfinDataSource.addToPlaylist(
+                    playlistId = UUID.fromString(playlistId),
+                    trackIds = listOf(UUID.fromString(trackId)),
+                    userId = userId,
+                )
+            } catch (_: Exception) {
+                // Ignore remote network failures when adding local track to playlist
+            }
             MellowResult.Success(Unit)
         } catch (e: Exception) {
             MellowResult.Error(e)
@@ -152,10 +191,19 @@ class PlaylistRepositoryImpl @Inject constructor(
         return try {
             playlistDao.removeTrackFromPlaylist(playlistId, trackId)
 
-            jellyfinDataSource.removeFromPlaylist(
-                playlistId = playlistId,
-                entryIds = listOf(trackId),
-            )
+            val playlist = playlistDao.getPlaylistById(playlistId)
+            if (playlist != null && playlist.trackCount > 0) {
+                playlistDao.upsert(playlist.copy(trackCount = playlist.trackCount - 1))
+            }
+
+            if (!playlistId.startsWith("local_") && !trackId.startsWith("local_")) {
+                try {
+                    jellyfinDataSource.removeFromPlaylist(
+                        playlistId = playlistId,
+                        entryIds = listOf(trackId),
+                    )
+                } catch (_: Exception) {}
+            }
             MellowResult.Success(Unit)
         } catch (e: Exception) {
             MellowResult.Error(e)

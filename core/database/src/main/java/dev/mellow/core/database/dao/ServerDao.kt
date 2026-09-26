@@ -27,6 +27,9 @@ interface ServerDao {
     @Query("UPDATE servers SET isActive = 0")
     suspend fun deactivateAll()
 
+    @Query("UPDATE servers SET isActive = 1, lastConnected = :now WHERE id = :serverId")
+    suspend fun setActiveServer(serverId: String, now: Long = System.currentTimeMillis())
+
     @Query("DELETE FROM servers WHERE id = :serverId")
     suspend fun delete(serverId: String)
 }

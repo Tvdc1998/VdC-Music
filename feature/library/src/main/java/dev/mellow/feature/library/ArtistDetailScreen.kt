@@ -55,6 +55,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.painter.ColorPainter
 import coil3.compose.AsyncImage
 import dev.mellow.core.common.artworkUri
+import dev.mellow.core.common.getArtworkUrl
 import dev.mellow.core.designsystem.component.ArtworkBackground
 import dev.mellow.core.designsystem.component.AlbumCard
 import dev.mellow.core.designsystem.component.AdaptiveTrackGrid
@@ -221,9 +222,7 @@ fun ArtistDetailScreen(
                                         AlbumCard(
                                             title = album.name,
                                             artist = album.year?.toString() ?: "",
-                                            imageUrl = if (serverUrl != null && album.imageId != null) {
-                                                artworkUri(album.imageId)
-                                            } else null,
+                                            imageUrl = getArtworkUrl(serverUrl, album.imageId),
                                             onClick = { onAlbumClick(album.id) },
                                             modifier = Modifier.weight(1f),
                                         )
@@ -493,9 +492,7 @@ private fun ArtistDetailExpanded(
                             AlbumCard(
                                 title = album.name,
                                 artist = album.year?.toString() ?: "",
-                                imageUrl = if (serverUrl != null && album.imageId != null) {
-                                    artworkUri(album.imageId)
-                                } else null,
+                                imageUrl = getArtworkUrl(serverUrl, album.imageId),
                                 onClick = { onAlbumClick(album.id) },
                         )
                     }

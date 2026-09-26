@@ -107,7 +107,7 @@ fun LoginScreen(
                         .padding(end = MellowSpacing.Sp8),
                 ) {
                     Text(
-                        text = "Mellow",
+                        text = "VdC Music",
                         style = MaterialTheme.typography.displayMedium,
                         color = MellowTheme.colors.foreground,
                     )
@@ -155,7 +155,7 @@ fun LoginScreen(
                 Spacer(Modifier.weight(1f))
 
                 Text(
-                    text = "Mellow",
+                    text = "VdC Music",
                     style = MaterialTheme.typography.displayLarge,
                     color = MellowTheme.colors.foreground,
                 )

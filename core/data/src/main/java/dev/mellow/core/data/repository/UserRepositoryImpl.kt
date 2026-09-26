@@ -32,9 +32,17 @@ class UserRepositoryImpl @Inject constructor(
             val result = jellyfinDataSource.authenticate(username, password)
             jellyfinClient.authenticate(result.accessToken)
 
+            val derivedName = result.serverName.ifBlank {
+                try {
+                    java.net.URI(serverUrl).host?.takeIf { it.isNotBlank() } ?: "Jellyfin"
+                } catch (_: Exception) {
+                    "Jellyfin"
+                }
+            }
+
             val server = Server(
                 id = result.serverId,
-                name = result.serverName,
+                name = derivedName,
                 url = serverUrl,
                 userId = result.userId,
                 accessToken = result.accessToken,
@@ -65,11 +73,24 @@ class UserRepositoryImpl @Inject constructor(
             MellowResult.Error(e)
         }
 
+    override fun observeServers(): Flow<List<Server>> =
+        serverDao.observeServers().map { list -> list.map { it.toModel() } }
+
     suspend fun getActiveServer(): Server? =
         serverDao.getActiveServer()?.toModel()
 
-    fun observeActiveServer(): Flow<Server?> =
+    override fun observeActiveServer(): Flow<Server?> =
         serverDao.observeActiveServer().map { it?.toModel() }
+
+    override suspend fun switchServer(serverId: String): MellowResult<Unit> {
+        return try {
+            serverDao.deactivateAll()
+            serverDao.setActiveServer(serverId)
+            MellowResult.Success(Unit)
+        } catch (e: Exception) {
+            MellowResult.Error(e)
+        }
+    }
 
     suspend fun restoreSession(): Boolean {
         val server = serverDao.getActiveServer() ?: return false
@@ -82,11 +103,24 @@ class UserRepositoryImpl @Inject constructor(
         return try {
             val server = serverDao.getActiveServer()
                 ?: return MellowResult.Error(IllegalStateException("No active server"))
-            jellyfinDataSource.setFavorite(
-                userId = UUID.fromString(server.userId),
-                itemId = UUID.fromString(itemId),
-                isFavorite = isFavorite,
-            )
+
+            if (itemId.startsWith("local_") || server.id == dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID) {
+                trackDao.setFavorite(itemId, isFavorite)
+                albumDao.setFavorite(itemId, isFavorite)
+                artistDao.setFavorite(itemId, isFavorite)
+                return MellowResult.Success(Unit)
+            }
+
+            try {
+                jellyfinDataSource.setFavorite(
+                    userId = UUID.fromString(server.userId),
+                    itemId = UUID.fromString(itemId),
+                    isFavorite = isFavorite,
+                )
+            } catch (_: Exception) {
+                // Ignore remote network failure when updating local Room favorite state
+            }
+
             trackDao.setFavorite(itemId, isFavorite)
             albumDao.setFavorite(itemId, isFavorite)
             artistDao.setFavorite(itemId, isFavorite)
@@ -132,11 +166,22 @@ class UserRepositoryImpl @Inject constructor(
         }
     }
 
-    private fun ServerEntity.toModel() = Server(
-        id = id,
-        name = name,
-        url = url,
-        userId = userId,
-        accessToken = accessToken,
-    )
+    private fun ServerEntity.toModel(): Server {
+        val fallbackName = if (id == dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID) {
+            "Local Device"
+        } else {
+            try {
+                java.net.URI(url).host?.takeIf { it.isNotBlank() } ?: "Jellyfin"
+            } catch (_: Exception) {
+                "Jellyfin"
+            }
+        }
+        return Server(
+            id = id,
+            name = name.ifBlank { fallbackName },
+            url = url,
+            userId = userId,
+            accessToken = accessToken,
+        )
+    }
 }

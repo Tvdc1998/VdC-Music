@@ -152,9 +152,10 @@ fun AlbumDetailComponent(
     onGoToArtist: () -> Unit = {},
 ) {
     var showMoreMenu by remember { mutableStateOf(false) }
+    val isLocal = albumId.startsWith("local_")
     val tracksLoading = tracks.isEmpty() && (isSyncing || expectedTrackCount > 0)
     val displayTrackCount = if (tracks.isNotEmpty()) tracks.size else expectedTrackCount
-    val showDownloadIndicators = downloadStatus != AlbumDownloadState.Status.NONE
+    val showDownloadIndicators = !isLocal && downloadStatus != AlbumDownloadState.Status.NONE
     if (layout == AlbumDetailLayout.SplitScreen) {
         val leftPaneModifier = Modifier.width(splitPaneWidth)
         Row(
@@ -315,14 +316,16 @@ fun AlbumDetailComponent(
                             onToggle = onFavoriteClick,
                             iconSize = 22.dp,
                         )
-                        AlbumDownloadButton(
-                            status = downloadStatus,
-                            downloadProgress = downloadProgress,
-                            downloadedCount = downloadedCount,
-                            totalDownloadCount = totalDownloadCount,
-                            onDownloadClick = onDownloadClick,
-                            onRemoveDownloadsClick = onRemoveDownloadsClick,
-                        )
+                        if (!isLocal) {
+                            AlbumDownloadButton(
+                                status = downloadStatus,
+                                downloadProgress = downloadProgress,
+                                downloadedCount = downloadedCount,
+                                totalDownloadCount = totalDownloadCount,
+                                onDownloadClick = onDownloadClick,
+                                onRemoveDownloadsClick = onRemoveDownloadsClick,
+                            )
+                        }
                     }
                     }
                 }
@@ -499,6 +502,7 @@ fun AlbumDetailComponent(
                                 onRemoveDownloadsClick = onRemoveDownloadsClick,
                                 showBackground = false,
                                 backgroundMode = BackgroundMode.Auto,
+                                showDownloadButton = !isLocal,
                             )
                         }
                     }
@@ -740,6 +744,7 @@ private fun AlbumHero(
     onRemoveDownloadsClick: () -> Unit = {},
     showBackground: Boolean = true,
     backgroundMode: BackgroundMode = BackgroundMode.Auto,
+    showDownloadButton: Boolean = true,
 ) {
     Box(modifier = Modifier.fillMaxWidth()) {
         if (showBackground) {
@@ -865,14 +870,16 @@ private fun AlbumHero(
                     onToggle = onFavoriteClick,
                     iconSize = 22.dp,
                 )
-                AlbumDownloadButton(
-                    status = downloadStatus,
-                    downloadProgress = downloadProgress,
-                    downloadedCount = downloadedCount,
-                    totalDownloadCount = totalDownloadCount,
-                    onDownloadClick = onDownloadClick,
-                    onRemoveDownloadsClick = onRemoveDownloadsClick,
-                )
+                if (showDownloadButton) {
+                    AlbumDownloadButton(
+                        status = downloadStatus,
+                        downloadProgress = downloadProgress,
+                        downloadedCount = downloadedCount,
+                        totalDownloadCount = totalDownloadCount,
+                        onDownloadClick = onDownloadClick,
+                        onRemoveDownloadsClick = onRemoveDownloadsClick,
+                    )
+                }
             }
         }
     }

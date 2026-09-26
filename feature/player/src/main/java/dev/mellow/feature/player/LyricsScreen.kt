@@ -84,6 +84,7 @@ fun LyricsScreen(
     onPlayPauseClick: () -> Unit = {},
     onSkipNextClick: () -> Unit = {},
     onSkipPreviousClick: () -> Unit = {},
+    onSearchLyricsClick: (() -> Unit)? = null,
 ) {
     val isSynced by remember(lyrics) {
         derivedStateOf { lyrics.any { it.startMs >= 0 } }
@@ -130,6 +131,7 @@ fun LyricsScreen(
                 artistName = artistName,
                 albumImageUrl = albumImageUrl,
                 onClose = onClose,
+                onSearchLyricsClick = onSearchLyricsClick,
             )
 
             val scrollIsolation = remember {
@@ -167,6 +169,25 @@ fun LyricsScreen(
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MellowTheme.colors.muted,
                             )
+                            if (onSearchLyricsClick != null) {
+                                Spacer(Modifier.height(MellowSpacing.Sp6))
+                                androidx.compose.material3.Button(
+                                    onClick = onSearchLyricsClick,
+                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                        containerColor = MellowTheme.colors.accent,
+                                        contentColor = MellowTheme.colors.background,
+                                    ),
+                                    shape = MellowShapes.Medium,
+                                ) {
+                                    Icon(
+                                        PhosphorIcons.MagnifyingGlass,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(18.dp),
+                                    )
+                                    Spacer(Modifier.width(MellowSpacing.Sp2))
+                                    Text("Search Lyrics Online")
+                                }
+                            }
                         }
                     }
                     else -> {
@@ -233,6 +254,7 @@ private fun LyricsTopBar(
     artistName: String,
     albumImageUrl: String?,
     onClose: () -> Unit,
+    onSearchLyricsClick: (() -> Unit)? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -278,6 +300,16 @@ private fun LyricsTopBar(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+        }
+
+        if (onSearchLyricsClick != null) {
+            IconButton(onClick = onSearchLyricsClick) {
+                Icon(
+                    PhosphorIcons.MagnifyingGlass,
+                    contentDescription = "Search Lyrics Online",
+                    tint = MellowTheme.colors.foreground,
+                )
+            }
         }
     }
 }

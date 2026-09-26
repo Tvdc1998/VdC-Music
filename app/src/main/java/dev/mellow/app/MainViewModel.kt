@@ -49,6 +49,7 @@ class MainViewModel @Inject constructor(
     private val albumDao: AlbumDao,
     private val lyricsDao: LyricsDao,
     private val playlistRepository: PlaylistRepository,
+    private val lyricsRepository: dev.mellow.core.data.repository.LyricsRepository,
 ) : ViewModel() {
 
     private val _authState = MutableStateFlow(AuthState.CHECKING)
@@ -94,6 +95,15 @@ class MainViewModel @Inject constructor(
             SyncPreferences.DEFAULT_SYNC_INTERVAL_HOURS,
         )
 
+    val servers: StateFlow<List<dev.mellow.core.model.Server>> = userRepository.observeServers()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    fun switchServer(serverId: String) {
+        viewModelScope.launch {
+            userRepository.switchServer(serverId)
+        }
+    }
+
     init {
         player.connect()
         viewModelScope.launch {
@@ -103,19 +113,22 @@ class MainViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            val restored = userRepository.restoreSession()
-            if (restored) {
-                val server = userRepository.getActiveServer()
-                _serverId.value = server?.id
-                _serverUrl.value = server?.url
-                _authState.value = AuthState.LOGGED_IN
-                networkStateObserver.markConnected()
-                server?.id?.let { id ->
-                    syncScheduler.schedulePeriodicSync(id)
-                    syncScheduler.syncNow(id)
+            userRepository.observeActiveServer().collect { server ->
+                if (server != null) {
+                    _serverId.value = server.id
+                    _serverUrl.value = if (server.id == dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID) null else server.url
+                    _authState.value = AuthState.LOGGED_IN
+                    if (server.id != dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID) {
+                        userRepository.restoreSession()
+                        syncScheduler.schedulePeriodicSync(server.id)
+                    } else {
+                        networkStateObserver.markConnected()
+                    }
+                } else {
+                    _serverId.value = null
+                    _serverUrl.value = null
+                    _authState.value = AuthState.LOGGED_OUT
                 }
-            } else {
-                _authState.value = AuthState.LOGGED_OUT
             }
         }
     }
@@ -219,6 +232,20 @@ class MainViewModel @Inject constructor(
         }
 
         return results
+    }
+
+    suspend fun searchOnlineLyrics(query: String): MellowResult<List<dev.mellow.core.data.repository.OnlineLyricsResult>> {
+        return lyricsRepository.searchOnlineLyrics(query)
+    }
+
+    suspend fun saveOnlineLyrics(trackId: String, result: dev.mellow.core.data.repository.OnlineLyricsResult): Boolean {
+        val lrcText = result.syncedLyrics ?: result.plainLyrics ?: return false
+        val parsedLines = lyricsRepository.parseLrcLyrics(lrcText)
+        if (parsedLines.isEmpty()) return false
+
+        val currentServerId = _serverId.value ?: dev.mellow.core.data.scanner.LocalMediaScanner.LOCAL_SERVER_ID
+        val saveRes = lyricsRepository.saveLyrics(trackId, currentServerId, parsedLines)
+        return saveRes is MellowResult.Success
     }
 
     private fun parseLyricsData(data: String): List<JellyfinDataSource.LyricsResult> {

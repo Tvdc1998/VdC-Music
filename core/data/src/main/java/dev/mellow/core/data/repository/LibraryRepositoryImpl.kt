@@ -84,6 +84,13 @@ class LibraryRepositoryImpl @Inject constructor(
             MellowResult.Error(e)
         }
 
+    override suspend fun getTrack(trackId: String): MellowResult<Track?> =
+        try {
+            MellowResult.Success(trackDao.getTrackById(trackId)?.toModel())
+        } catch (e: Exception) {
+            MellowResult.Error(e)
+        }
+
     override fun observeAlbum(albumId: String): Flow<MellowResult<Album?>> =
         albumDao.observeAlbumById(albumId)
             .map { MellowResult.Success(it?.toModel()) as MellowResult<Album?> }

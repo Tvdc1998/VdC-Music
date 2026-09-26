@@ -98,6 +98,7 @@ fun PlayerScreen(
     onCollapse: () -> Unit = {},
     onQueueClick: () -> Unit = {},
     onLyricsClick: () -> Unit = {},
+    onEqualizerClick: () -> Unit = {},
     onPlayPauseClick: () -> Unit = {},
     onSkipNextClick: () -> Unit = {},
     onSkipPreviousClick: () -> Unit = {},
@@ -148,6 +149,7 @@ fun PlayerScreen(
                 onCollapse = onCollapse,
                 onQueueClick = onQueueClick,
                 onLyricsClick = onLyricsClick,
+                onEqualizerClick = onEqualizerClick,
                 onPlayPauseClick = onPlayPauseClick,
                 onSkipNextClick = onSkipNextClick,
                 onSkipPreviousClick = onSkipPreviousClick,
@@ -209,7 +211,7 @@ fun PlayerScreen(
                             onShuffleClick = onShuffleClick,
                             onRepeatClick = onRepeatClick,
                         )
-                        PlayerBottomActions(codec = codec, onLyricsClick = onLyricsClick, reducedBottomPadding = true, showLyricsButton = !hasSidePanel)
+                        PlayerBottomActions(codec = codec, onLyricsClick = onLyricsClick, onEqualizerClick = onEqualizerClick, reducedBottomPadding = true, showLyricsButton = !hasSidePanel)
                         Spacer(Modifier.weight(1f))
                     }
                     if (sidePanelContent != null) {
@@ -284,7 +286,7 @@ fun PlayerScreen(
                                 onRepeatClick = onRepeatClick,
                                 compactVerticalPadding = true,
                             )
-                            PlayerBottomActions(codec = codec, onLyricsClick = onLyricsClick, compactVerticalPadding = true)
+                            PlayerBottomActions(codec = codec, onLyricsClick = onLyricsClick, onEqualizerClick = onEqualizerClick, compactVerticalPadding = true)
                         }
                     }
                     IconButton(
@@ -315,7 +317,7 @@ fun PlayerScreen(
                         onShuffleClick = onShuffleClick,
                         onRepeatClick = onRepeatClick,
                     )
-                    PlayerBottomActions(codec = codec, onLyricsClick = onLyricsClick)
+                    PlayerBottomActions(codec = codec, onLyricsClick = onLyricsClick, onEqualizerClick = onEqualizerClick)
                 }
             }
             PlayerLayout.Tabletop -> Unit
@@ -708,7 +710,14 @@ fun PlayerPlaybackControls(
 }
 
 @Composable
-fun PlayerBottomActions(codec: String? = null, onLyricsClick: () -> Unit = {}, reducedBottomPadding: Boolean = false, compactVerticalPadding: Boolean = false, showLyricsButton: Boolean = true) {
+fun PlayerBottomActions(
+    codec: String? = null,
+    onLyricsClick: () -> Unit = {},
+    onEqualizerClick: () -> Unit = {},
+    reducedBottomPadding: Boolean = false,
+    compactVerticalPadding: Boolean = false,
+    showLyricsButton: Boolean = true,
+) {
     val qualityLabel = when (codec?.lowercase()) {
         "flac", "alac", "wav", "pcm" -> "Lossless"
         "aac", "mp3", "opus", "vorbis", "ogg" -> "Lossy"
@@ -734,6 +743,14 @@ fun PlayerBottomActions(codec: String? = null, onLyricsClick: () -> Unit = {}, r
                 Icon(PhosphorIcons.TextAa, "Lyrics", tint = MellowTheme.colors.muted, modifier = Modifier.size(16.dp))
                 Text("Lyrics", style = MaterialTheme.typography.labelSmall, color = MellowTheme.colors.muted)
             }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(MellowSpacing.Sp1),
+                modifier = Modifier.clickable(onClick = onEqualizerClick),
+            ) {
+                Icon(PhosphorIcons.Sliders, "Equalizer", tint = MellowTheme.colors.muted, modifier = Modifier.size(16.dp))
+                Text("EQ", style = MaterialTheme.typography.labelSmall, color = MellowTheme.colors.muted)
+            }
             QualityBadge(codec = codec?.uppercase() ?: "\u2014")
         }
     } else {
@@ -758,6 +775,14 @@ fun PlayerBottomActions(codec: String? = null, onLyricsClick: () -> Unit = {}, r
                     Spacer(Modifier.height(4.dp))
                     Text("Lyrics", style = MaterialTheme.typography.labelSmall, color = MellowTheme.colors.muted)
                 }
+            }
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.clickable(onClick = onEqualizerClick),
+            ) {
+                Icon(PhosphorIcons.Sliders, "Equalizer", tint = MellowTheme.colors.muted, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.height(4.dp))
+                Text("Equalizer", style = MaterialTheme.typography.labelSmall, color = MellowTheme.colors.muted)
             }
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 QualityBadge(codec = codec?.uppercase() ?: "\u2014")
@@ -793,6 +818,7 @@ private fun TabletopPlayerLayout(
     onCollapse: () -> Unit,
     onQueueClick: () -> Unit,
     onLyricsClick: () -> Unit,
+    onEqualizerClick: () -> Unit,
     onPlayPauseClick: () -> Unit,
     onSkipNextClick: () -> Unit,
     onSkipPreviousClick: () -> Unit,
@@ -885,7 +911,7 @@ private fun TabletopPlayerLayout(
                 onShuffleClick = onShuffleClick,
                 onRepeatClick = onRepeatClick,
             )
-            PlayerBottomActions(codec = codec, onLyricsClick = onLyricsClick)
+            PlayerBottomActions(codec = codec, onLyricsClick = onLyricsClick, onEqualizerClick = onEqualizerClick)
         }
     }
 }

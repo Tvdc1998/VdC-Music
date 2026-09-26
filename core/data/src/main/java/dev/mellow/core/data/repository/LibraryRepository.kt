@@ -13,6 +13,7 @@ interface LibraryRepository {
     fun getAlbumTracks(albumId: String): Flow<MellowResult<List<Track>>>
     fun getArtistAlbumsById(artistId: String): Flow<MellowResult<List<Album>>>
     suspend fun getAlbum(albumId: String): MellowResult<Album?>
+    suspend fun getTrack(trackId: String): MellowResult<Track?>
     fun observeAlbum(albumId: String): Flow<MellowResult<Album?>>
     suspend fun getArtist(artistId: String): MellowResult<Artist?>
     fun observeArtist(artistId: String): Flow<MellowResult<Artist?>>

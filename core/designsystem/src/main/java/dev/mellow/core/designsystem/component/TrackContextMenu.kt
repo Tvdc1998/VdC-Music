@@ -58,6 +58,7 @@ fun TrackContextMenu(
     onStartMix: () -> Unit,
     onToggleFavorite: () -> Unit,
     onTrackInfo: () -> Unit,
+    onEditMetadata: (() -> Unit)? = null,
 ) {
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
@@ -146,6 +147,12 @@ fun TrackContextMenu(
                 onTrackInfo()
                 onDismiss()
             })
+            if (onEditMetadata != null) {
+                MenuAction(PhosphorIcons.PencilSimple, "Edit Metadata", onClick = {
+                    onEditMetadata()
+                    onDismiss()
+                })
+            }
         }
     }
 }

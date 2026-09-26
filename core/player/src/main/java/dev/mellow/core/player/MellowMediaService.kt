@@ -12,6 +12,7 @@ import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.session.CacheBitmapLoader
@@ -58,9 +59,11 @@ class MellowMediaService : MediaLibraryService() {
     @Inject lateinit var downloadDao: DownloadDao
     @Inject lateinit var networkStateObserver: NetworkStateObserver
     @Inject lateinit var jellyfinClientWrapper: JellyfinClientWrapper
+    @Inject lateinit var equalizerRepository: dev.mellow.core.data.repository.EqualizerRepository
 
     private var mediaLibrarySession: MediaLibrarySession? = null
     private var player: ExoPlayer? = null
+    private var audioEffectManager: AudioEffectManager? = null
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
@@ -73,9 +76,10 @@ class MellowMediaService : MediaLibraryService() {
             .build()
 
         val cacheDataSourceFactory = dataSourceFactory.createPlaybackDataSourceFactory()
+        val defaultDataSourceFactory = DefaultDataSource.Factory(this, cacheDataSourceFactory)
 
         val exoPlayer = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(cacheDataSourceFactory))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(defaultDataSourceFactory))
             .setAudioAttributes(audioAttributes, true)
             .setHandleAudioBecomingNoisy(true)
             .setWakeMode(C.WAKE_MODE_LOCAL)
@@ -83,7 +87,22 @@ class MellowMediaService : MediaLibraryService() {
 
         player = exoPlayer
 
+        val effectMgr = AudioEffectManager(serviceScope, equalizerRepository).apply {
+            attachPlayer(exoPlayer)
+        }
+        audioEffectManager = effectMgr
+
+        val initialSessionId = exoPlayer.audioSessionId
+        if (initialSessionId != C.AUDIO_SESSION_ID_UNSET && initialSessionId > 0) {
+            effectMgr.onAudioSessionIdChanged(initialSessionId)
+        }
+
         exoPlayer.addListener(object : Player.Listener {
+            override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                Log.d(TAG, "Audio session ID changed: $audioSessionId")
+                audioEffectManager?.onAudioSessionIdChanged(audioSessionId)
+            }
+
             override fun onPlayerError(error: PlaybackException) {
                 Log.e(TAG, "ExoPlayer error: ${error.errorCodeName}", error)
             }
@@ -137,6 +156,8 @@ class MellowMediaService : MediaLibraryService() {
 
     override fun onDestroy() {
         serviceScope.cancel()
+        audioEffectManager?.release()
+        audioEffectManager = null
         mediaLibrarySession?.run {
             player.release()
             release()
@@ -304,7 +325,7 @@ class MellowMediaService : MediaLibraryService() {
         var missCount = 0
         val result = mediaItems.map { item ->
             val trackId = item.mediaId
-            if (item.localConfiguration != null) {
+            if (item.localConfiguration != null && trackId.startsWith("local_track_")) {
                 enrichedCount++
                 return@map item
             }
@@ -312,9 +333,23 @@ class MellowMediaService : MediaLibraryService() {
             val track = trackDao.getTrackById(trackId)
             if (track != null) {
                 enrichedCount++
+                val streamUri = if (trackId.startsWith("local_track_")) {
+                    val rawId = trackId.removePrefix("local_track_").toLongOrNull()
+                    if (rawId != null) {
+                        android.content.ContentUris.withAppendedId(
+                            android.provider.MediaStore.Audio.Media.EXTERNAL_CONTENT_URI,
+                            rawId,
+                        )
+                    } else {
+                        Uri.parse(jellyfinStreamUrl(serverUrl, trackId, apiKey))
+                    }
+                } else {
+                    Uri.parse(jellyfinStreamUrl(serverUrl, trackId, apiKey))
+                }
+
                 MediaItem.Builder()
                     .setMediaId(trackId)
-                    .setUri(Uri.parse(jellyfinStreamUrl(serverUrl, trackId, apiKey)))
+                    .setUri(streamUri)
                     .setCustomCacheKey(trackId)
                     .setMediaMetadata(
                         MediaMetadata.Builder()
@@ -467,7 +502,7 @@ class MellowMediaService : MediaLibraryService() {
                     MediaMetadata.Builder()
                         .setIsBrowsable(true)
                         .setIsPlayable(false)
-                        .setTitle("Mellow")
+                        .setTitle("VdC Music")
                         .setExtras(rootExtras)
                         .build()
                 )

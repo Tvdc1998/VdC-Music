@@ -1,5 +1,7 @@
 package dev.mellow.core.designsystem.component
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -17,8 +19,10 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -41,6 +45,7 @@ fun MellowBottomNavBar(
     selectedRoute: String,
     onNavigate: (String) -> Unit,
     modifier: Modifier = Modifier,
+    activeAccentColor: Color? = null,
 ) {
     Column(modifier = modifier) {
         HorizontalDivider(color = MellowTheme.colors.border, thickness = 1.dp)
@@ -54,26 +59,46 @@ fun MellowBottomNavBar(
         ) {
             MellowNavDestination.entries.forEach { dest ->
                 val isSelected = dest.route == selectedRoute
-                val tint = if (isSelected) MellowTheme.colors.foreground else MellowTheme.colors.muted
+                val targetTint = if (isSelected) {
+                    activeAccentColor ?: MellowTheme.colors.foreground
+                } else {
+                    MellowTheme.colors.muted
+                }
+                val animatedTint by animateColorAsState(
+                    targetValue = targetTint,
+                    animationSpec = tween(400),
+                    label = "nav_tint",
+                )
+
+                val pillColor = if (isSelected && activeAccentColor != null) {
+                    activeAccentColor.copy(alpha = 0.15f)
+                } else Color.Transparent
+
+                val animatedPill by animateColorAsState(
+                    targetValue = pillColor,
+                    animationSpec = tween(400),
+                    label = "nav_pill",
+                )
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier
                         .clip(RoundedCornerShape(12.dp))
+                        .background(animatedPill)
                         .clickable { onNavigate(dest.route) }
                         .padding(horizontal = MellowSpacing.Sp3, vertical = MellowSpacing.Sp1),
                 ) {
                     Icon(
                         imageVector = dest.icon,
                         contentDescription = dest.label,
-                        tint = tint,
+                        tint = animatedTint,
                         modifier = Modifier.size(22.dp),
                     )
                     Box(modifier = Modifier.height(4.dp))
                     Text(
                         text = dest.label,
                         fontSize = 11.sp,
-                        color = tint,
+                        color = animatedTint,
                     )
                 }
             }

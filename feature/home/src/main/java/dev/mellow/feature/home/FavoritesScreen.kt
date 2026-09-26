@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import dev.mellow.core.common.artworkUri
+import dev.mellow.core.common.getArtworkUrl
 import dev.mellow.core.model.Album
 import dev.mellow.core.model.Artist
 import dev.mellow.core.model.Track
@@ -202,10 +203,7 @@ fun FavoritesContent(
                                 title = track.name,
                                 subtitle = "${track.artistName ?: ""} · ${track.albumName ?: ""}",
                                 duration = formatFavDuration(track.duration),
-                                imageUrl = if (serverUrl != null) {
-                                    val imgId = track.imageId ?: track.albumId
-                                    if (imgId != null) artworkUri(imgId) else null
-                                } else null,
+                                imageUrl = getArtworkUrl(serverUrl, track.imageId ?: track.albumId),
                                 isFavorite = true,
                                 onClick = { onTrackClick(track.id) },
                                 onMenuClick = { onTrackMenuClick(track.id) },
@@ -230,9 +228,7 @@ fun FavoritesContent(
                                 AlbumCard(
                                     title = album.name,
                                     artist = album.artistName ?: "",
-                                    imageUrl = if (serverUrl != null && album.imageId != null) {
-                                        artworkUri(album.imageId!!)
-                                    } else null,
+                                    imageUrl = getArtworkUrl(serverUrl, album.imageId),
                                     onClick = { onAlbumClick(album.id) },
                                     sharedElementKey = "album_art_favorites_${album.id}",
                                 )
@@ -254,9 +250,7 @@ fun FavoritesContent(
                             ArtistRow(
                                 name = artist.name,
                                 albumCount = artist.albumCount,
-                                imageUrl = if (serverUrl != null && artist.imageId != null) {
-                                    artworkUri(artist.imageId!!)
-                                } else null,
+                                imageUrl = getArtworkUrl(serverUrl, artist.imageId),
                                 onClick = { onArtistClick(artist.id) },
                                 showChevron = columns == 1,
                             )

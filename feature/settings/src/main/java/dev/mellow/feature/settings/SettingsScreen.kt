@@ -76,16 +76,36 @@ fun SettingsScreen(
     onClearAllDownloads: () -> Unit = {},
     lowPowerMode: Boolean = false,
     onLowPowerModeChange: (Boolean) -> Unit = {},
+    isLocalScanning: Boolean = false,
+    localScanResult: String? = null,
+    onScanLocalClick: () -> Unit = {},
+    onEqualizerClick: () -> Unit = {},
     appVersion: String = "",
     onDevToolsClick: () -> Unit = {},
     onLicensesClick: () -> Unit = {},
     onLogout: () -> Unit = {},
+    servers: List<dev.mellow.core.model.Server> = emptyList(),
+    activeServerId: String = "",
+    onSwitchServer: (String) -> Unit = {},
 ) {
     var showIntervalPicker by remember { mutableStateOf(false) }
     var showQualityPicker by remember { mutableStateOf(false) }
     var showStorageCapPicker by remember { mutableStateOf(false) }
     var showClearConfirmation by remember { mutableStateOf(false) }
     var showLogoutConfirmation by remember { mutableStateOf(false) }
+    var showServerPicker by remember { mutableStateOf(false) }
+
+    if (showServerPicker) {
+        ServerPickerDialog(
+            servers = servers,
+            activeServerId = activeServerId,
+            onSelect = { serverId ->
+                onSwitchServer(serverId)
+                showServerPicker = false
+            },
+            onDismiss = { showServerPicker = false },
+        )
+    }
 
     if (showIntervalPicker) {
         SyncIntervalPickerDialog(
@@ -170,11 +190,28 @@ fun SettingsScreen(
         )
         HorizontalDivider(color = MellowTheme.colors.border)
 
-        SettingsSection("Server")
+        SettingsSection("Server & Library")
+        if (servers.size > 1) {
+            SettingsRow(
+                icon = PhosphorIcons.HardDrives,
+                title = "Active Library / Server",
+                value = servers.find { it.id == activeServerId }?.name ?: "Select server",
+                onClick = { showServerPicker = true },
+            )
+        }
         SettingsRow(PhosphorIcons.HardDrives, "Jellyfin Server", serverUrl.ifEmpty { "Not connected" })
         if (serverUrl.isNotEmpty()) {
             LogoutRow(onClick = { showLogoutConfirmation = true })
         }
+        HorizontalDivider(color = MellowTheme.colors.border)
+
+        SettingsSection("Local Music")
+        SettingsRow(
+            icon = PhosphorIcons.DeviceMobile,
+            title = "Scan Local Library",
+            value = if (isLocalScanning) "Scanning local storage..." else (localScanResult ?: "Scan music on phone"),
+            onClick = onScanLocalClick,
+        )
         HorizontalDivider(color = MellowTheme.colors.border)
 
         SettingsSection("Downloads & Offline")
@@ -201,6 +238,15 @@ fun SettingsScreen(
         ClearAllDownloadsRow(
             totalBytes = totalDownloadedBytes,
             onClick = { showClearConfirmation = true },
+        )
+        HorizontalDivider(color = MellowTheme.colors.border)
+
+        SettingsSection("Audio")
+        SettingsRow(
+            icon = PhosphorIcons.Sliders,
+            title = "Equalizer & Speed",
+            value = "Bands, presets & speed acceleration",
+            onClick = onEqualizerClick,
         )
         HorizontalDivider(color = MellowTheme.colors.border)
 
@@ -363,6 +409,33 @@ private fun ClearAllDownloadsRow(totalBytes: Long, onClick: () -> Unit) {
             }
         }
     }
+}
+
+@Composable
+private fun ServerPickerDialog(
+    servers: List<dev.mellow.core.model.Server>,
+    activeServerId: String,
+    onSelect: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    MellowDialog(
+        onDismissRequest = onDismiss,
+        title = "Switch Library / Server",
+        content = {
+            Column {
+                servers.forEach { server ->
+                    MellowRadioOption(
+                        label = server.name.ifBlank { if (server.id == "local_device") "Local Device" else "Jellyfin" },
+                        selected = server.id == activeServerId,
+                        onClick = {
+                            onSelect(server.id)
+                            onDismiss()
+                        },
+                    )
+                }
+            }
+        },
+    )
 }
 
 @Composable
