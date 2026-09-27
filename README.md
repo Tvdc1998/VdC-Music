@@ -2,7 +2,6 @@
 
 A fast music player for Android with first-class Android Auto support for local music and jellyfin.
 
-📖 [Read the story behind Mellow](https://blog.marathonlabs.io/blog/dogfooding-emu-building-mellow/)
 
 <p align="center">
   <img src="docs/screenshot-album.png" width="240" alt="Album detail" />
