@@ -7,7 +7,7 @@ A fast music player for Android with first-class Android Auto support for local 
 <p align="center">
   <img src="docs/screenshot-home.png" width="240" alt="Home" />
   <img src="docs/screenshot-album.png" width="240" alt="Album detail" />
-  <img src="docs/screenshot-login.png" width="240" alt="Login" />
+
 </p>
 
 <p align="center">
